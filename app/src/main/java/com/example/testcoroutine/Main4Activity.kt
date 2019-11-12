@@ -31,9 +31,15 @@ class Main4Activity : AppCompatActivity() {
 
                 launch { innerFun1(handler4) }
 
-                val t1 = async { innerFun2(handler4) }
+                //val t1 = async { innerFun2(handler4) }
 
-                tvLogs4.text ="${tvLogs4.text} ${t1.await().title}\n"
+
+                launch {
+                    val t1 = async { innerFun2(handler4) }
+                    tvLogs4.text ="${tvLogs4.text} ${t1.await().title}\n"
+                }
+
+                //tvLogs4.text ="${tvLogs4.text} ${t1.await().title}\n"
 
             }
         }
@@ -41,14 +47,19 @@ class Main4Activity : AppCompatActivity() {
 
     @InternalCoroutinesApi
     private suspend fun innerFun1(handler4: InputHandler4) {
+        Log.d("TAG", "innerFun1()")
         for (i in 0 until 5) {
             val t1 = withContext(Dispatchers.IO) { async { WeatherApi.loadSpbWeather() } }
             val t2 = t1.await()
-            //handler4.actor1.send(Pair(t1.await().third.get(), i))
-            select<Pair<String, Int>> { handler4.actor1.onSend(Pair(t2.third.get(), i)) { Log.d("TAG", "hey") } }
+            handler4.actor1.send(Pair(t2.third.get(), i))
         }
     }
 
     private suspend fun innerFun2(handler4: InputHandler4): WeatherResponse = handler4.channel1.receive()
+
+
+    private suspend fun innerFun3(handler4: InputHandler4) = select<WeatherResponse> {
+        handler4.channel1.onReceive
+    }
 
 }

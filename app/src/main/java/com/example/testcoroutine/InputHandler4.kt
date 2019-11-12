@@ -24,18 +24,10 @@ class InputHandler4(scope: CoroutineScope): CoroutineScope by scope {
         }
     }
 
+    val channel0: Channel<Pair<String, Int>> = Channel(Channel.UNLIMITED)
+
     val channel1: Channel<WeatherResponse> = Channel(Channel.UNLIMITED)
 
 
-    @InternalCoroutinesApi
-    fun fun1(pair: Pair<String, Int>) {
-        launch {
-            select<Pair<String, Int>> {
-                actor1.onSend
-            }
-        }
-    }
-
-    fun fun2() {}
 
 }
