@@ -29,5 +29,4 @@ class InputHandler4(scope: CoroutineScope): CoroutineScope by scope {
     val channel1: Channel<WeatherResponse> = Channel(Channel.UNLIMITED)
 
 
-
 }
