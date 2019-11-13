@@ -10,51 +10,99 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.channels.Channel
 
+/**
+ Реализация бесконечных запросов в сеть с остановкой и продолжением? через 3 канала (самый проффесиональный чтоли) )
+
+ в OnCreate() идёт вызов launchMainCoroutin()
+
+ - идёт запуск главного корутина
+
+ - в нём запускаются ещё 3
+
+ - в них while() , но посколькольку в каждом while есть блокирующий channel receive, то они постоянно находяся в ожидании
+
+
+ На кнопки (start/stop) идёт отправка в commandChannel - первый внутренний корутин ловит данные - понимает , что ему делать -
+
+ запускает бесконечный while или отменяет его
+
+
+
+ Рассмотрим 1ый внутренний корутин
+
+ в нём инициализируется job , чтобы мы могли взаимодействовать с "sub - sub корутином"
+ далее while(true)  где идёт ожидание комманды
+ как только команда приходит - , то идёт её рассмотрение
+
+ Если start, то мы создаём корутин , если stop , то уничтожаем прошлый
+
+
+ ------------------------------
+
+ Другие возможные варианты ?
+
+ просто на btn`s (start/stop)
+ запуск главного корутина и его cancel
+
+ (так себе?)
+
+
+ Может есть и ещё другин варианты , но на данный момент, смомневаюсь , что они лучше будут чем этот
+
+ */
+
 
 class Main4Activity : AppCompatActivity() {
 
     private var activity4Job = Job()
     private val activity4Scope = CoroutineScope(Dispatchers.Main + activity4Job)
 
+    private val commandChannel: Channel<String> = Channel()
+    private val testChannel0: Channel<Pair<String, Int>> = Channel()
     private val testChannel: Channel<String> = Channel()
 
-    private val testChannel0: Channel<Pair<String, Int>> = Channel()
 
     private var param = true
+
 
 
     @InternalCoroutinesApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main4)
-        btnFire4.setOnClickListener { start() }
+        btnStart.setOnClickListener { sendCommand(START) }
+        btnStop.setOnClickListener { sendCommand(STOP) }
+        launchMainCoroutin()
     }
 
 
     @InternalCoroutinesApi
-    private fun start() {
-        tvLogs4.text = "start() call\n"
+    private fun launchMainCoroutin() {
+        tvLogs4.text = "launchMainCoroutin() call\n"
         activity4Scope.launch {
             coroutineScope {
 
-                //                val handler4 = InputHandler4(this)
-//
-//                launch { innerFun1(handler4) }
-//
-//                val t1 = async { innerFun2(handler4) }
-//
-//                tvLogs4.text ="${tvLogs4.text} ${t1.await().title}\n"
-
                 Log.d("TAG", "1) Before first launch")
                 launch {
-                    Log.d("TAG", "1) Inside first launch")
-                    for (i in 0 until 5) {
-                        Log.d("TAG", "1) Inside for loop of the first launch $i")
-                        val t1 = withContext(Dispatchers.IO) { async { WeatherApi.loadSpbWeather() } }
-                        val t2 = t1.await().third.get().take(10)
-                        val t3 = "$i) $t2"
-                        testChannel0.send(Pair(t3, i))
+
+                    var j1: Job? = null
+
+                    while (true) {
+                        val t1: String = commandChannel.receive()
+                        if(t1 == START) {
+
+                            j1 = launch {
+                                while (true) {
+                                    val t2 = withContext(Dispatchers.IO) { async { WeatherApi.loadSpbWeather() } }
+                                    val t3 = t2.await().third.get().take(10)
+                                    testChannel0.send(Pair(t3, 123))
+                                }
+                            }
+                        } else {
+                            j1?.cancel()
+                        }
                     }
+
                 }
 
                 Log.d("TAG", "2) Before second launch")
@@ -62,70 +110,38 @@ class Main4Activity : AppCompatActivity() {
                     Log.d("TAG", "2) Inside second launch")
                     while (param) {
                         Log.d("TAG", "2) Inside while loop of the second launch")
-                        val t1 = async { testChannel0.receive() }
-                        val t2 = t1.await().first
-                        val t3 = t1.await().second
-                        if(t3 > 2) testChannel.send(t2)
-                        if(t3 == 4) param = false
+                        val t1 = testChannel0.receive()
+                        val t2 = t1.first
+                        testChannel.send(t2)
                     }
                 }
 
                 Log.d("TAG", "3) Before third launch")
                 launch {
                     Log.d("TAG", "3) Inside while loop of the third launch")
-                    while (param) {
+                    while (true) {
                         Log.d("TAG", "3) Inside while loop of the third launch")
-                        val t1 = async { testChannel.receive() }
-                        tvLogs4.text = "${tvLogs4.text} \n ${t1.await().take(10)} \n"
+                        val t1 = testChannel.receive()
+                        val t2 = t1.take(10)
+                        tvLogs4.text = "${tvLogs4.text} \n $t2 \n"
                     }
                 }
 
             }
-            Log.d("TAG", "end")
         }
     }
 
 
 
-    @InternalCoroutinesApi
-    private suspend fun innerFun1(handler4: InputHandler4) {
-        Log.d("TAG", "innerFun1()")
-        for (i in 0 until 5) {
-            val t1 = withContext(Dispatchers.IO) { async { WeatherApi.loadSpbWeather() } }
-            val t2 = t1.await()
-            handler4.actor1.send(Pair(t2.third.get(), i))
-        }
-    }
-
-    private suspend fun innerFun2(handler4: InputHandler4): WeatherResponse =
-        handler4.channel1.receive()
-
-
-    private suspend fun innerFun3(handler4: InputHandler4) = select<WeatherResponse> {
-        handler4.channel1.onReceive
+    private fun sendCommand(command: String) {
+        Log.d("TAG", "SEND COMMAND $command")
+        activity4Scope.launch { commandChannel.send(command) }
     }
 
 
-//    start() fun execution
-
-//    D/TAG: 1) Before first launch
-//    D/TAG: 2) Before second launch
-//    D/TAG: 3) Before third launch
-//    D/TAG: 1) Inside first launch
-//    D/TAG: 1) Inside for loop of the first launch 0
-//    D/TAG: 2) Inside second launch
-//    D/TAG: 2) Inside while loop of the second launch
-//    D/TAG: 3) Inside while loop of the third launch
-//    D/TAG: 3) Inside while loop of the third launch
-//    D/TAG: 1) Inside for loop of the first launch 1
-//    D/TAG: 2) Inside while loop of the second launch
-//    D/TAG: 1) Inside for loop of the first launch 2
-//    D/TAG: 2) Inside while loop of the second launch
-//    D/TAG: 1) Inside for loop of the first launch 3
-//    D/TAG: 2) Inside while loop of the second launch
-//    D/TAG: 1) Inside for loop of the first launch 4
-//    D/TAG: 2) Inside while loop of the second launch
-//    D/TAG: 3) Inside while loop of the third launch
-//    D/TAG: end
+    companion object {
+        private const val START = "start"
+        private const val STOP = "stop"
+    }
 
 }
